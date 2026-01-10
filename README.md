@@ -1,11 +1,17 @@
 # Инструкция по запуску проекта Microservices
 
-Проект состоит из следующих микросервисов:
+Структура проекта:
+- user-service — микросервис для управления пользователями
+- gateway-service — API Gateway с маршрутизацией и circuit breaker
+- eureka-server — сервис регистрации и discovery
+- config-server — централизованный сервер конфигурации
+- config-repo — локальный git репозиторий с конфигурациями для сервисов
 
-1. config-server          - Spring Cloud Config Server
-2. eureka-server          - Spring Cloud Eureka Server
-3. user-service           - Сервис управления пользователями
-4. gateway-service        - API Gateway с Circuit Breaker и Service Discovery
+Конфигурации:
+- User Service: application.yml берётся из config-server
+- Gateway Service: application.yml берётся из config-server
+- Config Server: читает конфигурации из локального git: file:///D:/config-repo
+- Eureka Server: порт 8761
 
 microservices-project/
 ├── config-server/
@@ -40,111 +46,85 @@ microservices-project/
 
 ## Шаг 0: Клонирование репозиториев
 
-Клонируйте каждый сервис в отдельную папку. Замените ссылки на репозитории на актуальные.
+Клонируйте каждый сервис в отдельную папку.
 
 - config-server: https://github.com/AlexsandrSolomkin/config-server
 - eureka-server: https://github.com/AlexsandrSolomkin/eureka-server
 - user-service: https://github.com/AlexsandrSolomkin/Intensive_Java_DataBase/tree/aleksandrSolomkin_v0.5
 - gateway-service: https://github.com/AlexsandrSolomkin/gateway-service
 
----
+Создать папку file:///D:/config-repo
 
-## Шаг 1: Настройка Config Server
+Создать в ней файлы:
+- application.yml:
 
-1. Перейдите в папку config-server.
-2. Откройте файл `application.yml` и укажите путь к Git-репозиторию с конфигурациями (если используется Git) или локальный путь к папкам с конфигами.
-3. Соберите проект:
+  spring:
+  datasource:
+  url: jdbc:h2:mem:testdb
+  driver-class-name: org.h2.Driver
+  username: sa
+  password:
+  jpa:
+  hibernate:
+  ddl-auto: update
+  show-sql: true
 
-mvn clean install
+- some-service.yml:
 
-4. Запустите сервис:
+  server:
+  port: 8081
 
-mvn spring-boot:run
-
-Config Server будет доступен на http://localhost:8888
-
----
-
-## Шаг 2: Настройка Eureka Server
-
-1. Перейдите в папку eureka-server.
-2. Соберите проект:
-
-mvn clean install
-
-3. Запустите сервис:
-
-mvn spring-boot:run
-
-Eureka Server будет доступен на http://localhost:8761. Здесь будут регистрироваться все сервисы.
-
----
-
-## Шаг 3: Настройка User Service
-
-1. Перейдите в папку user-service.
-2. Откройте `application.yml` и укажите:
-
-- URL к вашей базе PostgreSQL
-- Имя пользователя и пароль
-
-Пример:
-
-spring:
-datasource:
-url: jdbc:postgresql://localhost:5432/user_service_db
-username: user_service_user
-password: <ваш пароль>
-
-3. Соберите проект:
-
-mvn clean install
-
-4. Запустите сервис:
-
-mvn spring-boot:run
-
-User Service будет доступен на http://localhost:8080
+  spring:
+  datasource:
+  url: jdbc:h2:mem:serviceDb
+  driver-class-name: org.h2.Driver
+  username: sa
+  password:
+  jpa:
+  hibernate:
+  ddl-auto: update
+  show-sql: true
 
 ---
 
-## Шаг 4: Настройка Gateway Service
+ПОРЯДОК ЗАПУСКА:
 
-1. Перейдите в папку gateway-service.
-2. Убедитесь, что в `application.yml` настроены:
+## Шаг 1: Запустить Eureka Server:
+cd eureka-server
+mvn clean spring-boot:run
+Порт: 8761
+URL интерфейса: http://localhost:8761
 
-- Сервис discovery через Eureka
-- Настройки маршрутов к user-service
+## Шаг 2: Запустить Config Server:
+cd config-server
+mvn clean spring-boot:run
+Порт: 8888
+Проверка: http://localhost:8888/user-service/default
 
-3. Соберите проект:
+## Шаг 3: Запустить User Service:
+cd user-service
+mvn clean spring-boot:run
+Порт: 8080
+URL для тестирования:
+- GET http://localhost:8080/users
+- POST http://localhost:8080/users
 
-mvn clean install
+## Шаг 4: Запустить API Gateway:
+cd gateway-service
+mvn clean spring-boot:run
+Порт: 8081
+Пример маршрута через Gateway: GET http://localhost:8081/users
+Fallback: если user-service недоступен, ответ — "Сервис пользователей временно недоступен. Попробуйте позже."
 
-4. Запустите сервис:
+## Шаг 5: Проверка работы:
+- Откройте Eureka Server: http://localhost:8761 — убедитесь, что сервисы зарегистрированы
+- Используйте Postman или curl для тестирования маршрутов через gateway
+- Остановите user-service и проверьте работу fallback через gateway (http://localhost:8081/users)
 
-mvn spring-boot:run
-
-Gateway будет доступен на http://localhost:8081 (или порт из `application.yml`).
-
----
-
-## Шаг 5: Проверка работы
-
-1. Перейдите в Eureka Dashboard (http://localhost:8761) и убедитесь, что все сервисы зарегистрированы.
-2. Используйте API Gateway для доступа к User Service, например:
-
-GET http://localhost:8081/users
-POST http://localhost:8081/users
-
-3. Для проверки Circuit Breaker можно временно остановить User Service и проверить, что Gateway корректно обрабатывает ошибки.
-
----
-
-## Дополнительно
-
-- Swagger UI User Service: http://localhost:8080/swagger-ui.html
-- Для добавления новых микросервисов добавляйте их в Eureka и настраивайте маршруты в Gateway.
-- Все настройки можно хранить в Config Server, чтобы менять порты, URL и креды без пересборки сервисов.
+Полезные команды Maven:
+- Сборка проекта: mvn clean install
+- Форсированный апдейт зависимостей: mvn clean install -U
+- Запуск конкретного модуля: mvn spring-boot:run -pl user-service
 
 ---
 
